@@ -1,0 +1,108 @@
+让我们详细分析 `identity` 函数和 `identity(1)` 的调用，并展示其对应的 SIL 表示。`identity` 是一个泛型函数，当我们调用 `identity(1)` 时，泛型 `T` 被实例化为 `Int`。
+
+### Swift 代码：
+
+```swift
+func identity<T>(x: T) -> T {
+    return x
+}
+
+let result = identity(1)
+```
+
+### SIL 表示：
+这是 `identity` 函数的 SIL 表示，以及调用 `identity(1)` 时的 SIL 表示：
+
+```sil
+// identity 函数的 SIL 表示
+sil hidden @$s4main8identityyxxlF : $@convention(thin) <T> (@in_guaranteed T) -> @out T {
+bb0(%0 : $*T, %1 : $*T):
+  copy_addr %1 to [init] %0 : $*T
+  %2 = tuple ()
+  return %2 : $()
+}
+
+// 调用 identity(1) 的 SIL 表示
+%0 = integer_literal $Builtin.IntLiteral, 1          // 创建整数 1
+%1 = struct $Int (%0 : $Builtin.IntLiteral)          // 用 integer_literal 创建一个 Int 值
+%2 = alloc_stack $Int                                // 为 Int 类型的值分配栈空间
+store %1 to [trivial] %2 : $*Int                     // 将 Int 值存储到栈空间
+
+%3 = function_ref @$s4main8identityyxxlF : $@convention(thin) <T> (@in_guaranteed T) -> @out T
+                                                      // 获取泛型函数的引用
+%4 = alloc_stack $Int                                // 分配栈空间用于返回值
+apply %3<Int>(%4, %2) : $@convention(thin) <T> (@in_guaranteed T) -> @out T
+                                                      // 调用函数，T 被实例化为 Int
+
+%5 = load [trivial] %4 : $*Int                       // 加载返回值
+dealloc_stack %4                                      // 释放返回值的栈空间
+dealloc_stack %2                                      // 释放参数的栈空间
+```
+
+### 详细解析：
+
+#### 1. `identity` 函数的 SIL 表示
+
+```sil
+sil hidden @$s4main8identityyxxlF : $@convention(thin) <T> (@in_guaranteed T) -> @out T {
+bb0(%0 : $*T, %1 : $*T):
+  copy_addr %1 to [init] %0 : $*T
+  %2 = tuple ()
+  return %2 : $()
+}
+```
+
+- **`sil hidden`**: 这表示 `identity` 函数在 SIL 中的定义。它是 "hidden" 的，意味着这个函数在当前模块中是可见的，但不会在外部模块中暴露。
+- **`@convention(thin)`**: 该函数使用 Swift 的 "thin" 调用约定。这是用于某些优化的函数调用模式。
+- **`<T>`**: 这是一个泛型参数 `T`，函数可以接受任何类型 `T` 的值。
+- **`@in_guaranteed T -> @out T`**: 这表明参数 `T` 是以引用的形式传递，返回值也是通过引用传递。
+
+在基本块 `bb0` 中：
+- `%0` 是返回值的地址，%1 是传入参数的地址。
+- `copy_addr` 将参数的值从 `%1` 复制到 `%0`，实现了函数的返回值。
+- `tuple ()` 表示返回的结果是一个空的元组 `()`，因为 `copy_addr` 完成了实际的数据复制工作。
+
+#### 2. 调用 `identity(1)` 的 SIL 表示
+
+调用 `identity(1)` 时，泛型 `T` 被具体化为 `Int`，并生成如下 SIL：
+
+```sil
+%0 = integer_literal $Builtin.IntLiteral, 1
+```
+- 生成一个整数字面量 `1`，表示 `Builtin.IntLiteral` 类型。
+
+```sil
+%1 = struct $Int (%0 : $Builtin.IntLiteral)
+```
+- 使用字面量 `1` 构造 `Int` 类型的值。
+
+```sil
+%2 = alloc_stack $Int
+store %1 to [trivial] %2 : $*Int
+```
+- 为 `Int` 分配栈空间，并将值 `1` 存储到该栈空间中。
+
+```sil
+%3 = function_ref @$s4main8identityyxxlF : $@convention(thin) <T> (@in_guaranteed T) -> @out T
+```
+- 通过 `function_ref` 获取 `identity` 函数的引用。此时，函数还是泛型的。
+
+```sil
+%4 = alloc_stack $Int
+apply %3<Int>(%4, %2) : $@convention(thin) <T> (@in_guaranteed T) -> @out T
+```
+- `apply` 表示调用 `identity` 函数。这里将泛型 `T` 实例化为 `Int`，并将返回值存储在 `%4` 中。
+
+```sil
+%5 = load [trivial] %4 : $*Int
+```
+- 加载返回值，也就是 `identity` 函数返回的 `Int` 值。
+
+```sil
+dealloc_stack %4
+dealloc_stack %2
+```
+- 释放之前分配的栈空间。
+
+### 总结：
+这个 SIL 展示了 Swift 编译器如何处理泛型函数 `identity` 的调用。在 SIL 层，泛型被具体化为特定的类型（这里是 `Int`），并通过栈上的地址传递值和接收返回值。
